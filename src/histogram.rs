@@ -5,28 +5,11 @@ use std::collections::HashMap;
 type ParseResult<T> = conch_parser::parse::ParseResult<T, void::Void>;
 
 #[derive(Default)]
-pub(crate) struct Histogram {
+struct Histogram {
     map: HashMap<String, usize>,
 }
 
 impl Histogram {
-    pub(crate) fn histogram<I>(cmds: I) -> ParseResult<HashMap<String, usize>>
-    where
-        I: IntoIterator<Item = ParseResult<ast::TopLevelCommand<String>>>,
-    {
-        let mut histogram = Self::new();
-
-        let mut cmd_visitor = CmdVisitor {
-            histogram: &mut histogram,
-        };
-
-        for cmd in cmds {
-            cmd_visitor.visit_top_level_command(&cmd?)
-        }
-
-        Ok(histogram.map)
-    }
-
     fn new() -> Self {
         Self::default()
     }
@@ -51,6 +34,23 @@ impl<'ast> Visitor<'ast> for CmdVisitor<'_> {
 
         self.histogram.visit_simple_command(cmd);
     }
+}
+
+pub(crate) fn histogram<I>(cmds: I) -> ParseResult<HashMap<String, usize>>
+where
+    I: IntoIterator<Item = ParseResult<ast::TopLevelCommand<String>>>,
+{
+    let mut histogram = Histogram::new();
+
+    let mut cmd_visitor = CmdVisitor {
+        histogram: &mut histogram,
+    };
+
+    for cmd in cmds {
+        cmd_visitor.visit_top_level_command(&cmd?)
+    }
+
+    Ok(histogram.map)
 }
 
 fn simple_word_to_str(word: &ast::DefaultSimpleWord) -> Option<&str> {
@@ -135,5 +135,160 @@ impl<'ast> Visitor<'ast> for Histogram {
         }
 
         self.add_cmd(concat);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use conch_parser::lexer::Lexer;
+    use conch_parser::parse::DefaultParser;
+    use super::histogram;
+    use std::collections::BTreeMap;
+    use std::iter::FromIterator;
+
+    #[test]
+    fn histogram_smoke() {
+        let s = r#"
+            single_command ignore ignore ignore
+
+            and_cmd ignore && and_cmd ignore also ignore
+            or_cmd ignore || or_cmd ignore also ignore
+
+            job ignore ignore &
+
+            pipe ignore | pipe | pipe also ignore
+
+            function foo() {
+                fn_body
+                fn_body
+            }
+
+            {
+                brace ignore
+                brace ignore ignore
+                brace ignore ignore ignore
+            }
+
+            (
+                subshell ignore
+                subshell ignore ignore
+            )
+
+            while while_guard1; while_guard2; do
+                while_body1
+                while_body2
+            done
+
+            until until_guard1; until_guard2; do
+                until_body1
+                until_body2
+            done
+
+            if if_guard1; if_guard1; then
+                if_body1
+            elif if_guard2; if_guard2; then
+                if_body2
+                if_body2
+            else
+                els_body
+                els_body
+            fi
+
+            for f in ignore ignore ignore; do
+                for_body ignore
+                for_body $f
+            done
+
+            case x in
+                foo) case_foo;;
+                bar) case_bar;;
+            esac
+
+            # words
+            hello'world' ignore ignore
+            hello"world" ignore ignore
+            hello'foo'"bar"\b\a\z ignore ignore
+
+            * ignore
+            ? ignore
+            [ ignore
+            ] ignore
+            ~ ignore
+            : ignore
+
+            echo $(subst1 ignore)
+            echo ${param:-$(subst2 ignore)}
+            echo ${param:=$(subst3 ignore)}
+            echo ${param:?$(subst4 ignore)}
+            echo ${param:+$(subst5 ignore)}
+            echo ${param%$(subst6 ignore)}
+            echo ${param%%$(subst7 ignore)}
+            echo ${param#$(subst8 ignore)}
+            echo ${param##$(subst9 ignore)}
+
+            # Nested subst
+            echo $(subst10 ignore $(subst11 ignore) $(subst12 ignore $(subst13 ignore)))
+
+            # Redirects
+            echo <$(redsub) >$(redsub) <>$(redsub) >>$(redsub) >|$(redsub) <<EOF
+                $(redsub)
+            EOF
+        "#;
+        let lex = Lexer::new(s.chars());
+        let parser = DefaultParser::new(lex);
+
+        let mut expected = BTreeMap::new();
+        expected.insert("single_command".into(), 1);
+        expected.insert("or_cmd".into(), 2);
+        expected.insert("and_cmd".into(), 2);
+        expected.insert("job".into(), 1);
+        expected.insert("pipe".into(), 3);
+        expected.insert("fn_body".into(), 2);
+        expected.insert("brace".into(), 3);
+        expected.insert("subshell".into(), 2);
+        expected.insert("while_guard1".into(), 1);
+        expected.insert("while_guard2".into(), 1);
+        expected.insert("while_body1".into(), 1);
+        expected.insert("while_body2".into(), 1);
+        expected.insert("until_guard1".into(), 1);
+        expected.insert("until_guard2".into(), 1);
+        expected.insert("until_body1".into(), 1);
+        expected.insert("until_body2".into(), 1);
+        expected.insert("if_guard1".into(), 2);
+        expected.insert("if_body1".into(), 1);
+        expected.insert("if_guard2".into(), 2);
+        expected.insert("if_body2".into(), 2);
+        expected.insert("els_body".into(), 2);
+        expected.insert("for_body".into(), 2);
+        expected.insert("case_foo".into(), 1);
+        expected.insert("case_bar".into(), 1);
+        expected.insert("helloworld".into(), 2);
+        expected.insert("hellofoobarbaz".into(), 1);
+        expected.insert("*".into(), 1);
+        expected.insert("?".into(), 1);
+        expected.insert("[".into(), 1);
+        expected.insert("]".into(), 1);
+        expected.insert("~".into(), 1);
+        expected.insert(":".into(), 1);
+        expected.insert("echo".into(), 11);
+        expected.insert("subst1".into(), 1);
+        expected.insert("subst2".into(), 1);
+        expected.insert("subst3".into(), 1);
+        expected.insert("subst4".into(), 1);
+        expected.insert("subst5".into(), 1);
+        expected.insert("subst6".into(), 1);
+        expected.insert("subst7".into(), 1);
+        expected.insert("subst8".into(), 1);
+        expected.insert("subst9".into(), 1);
+        expected.insert("subst10".into(), 1);
+        expected.insert("subst11".into(), 1);
+        expected.insert("subst12".into(), 1);
+        expected.insert("subst13".into(), 1);
+        expected.insert("redsub".into(), 6);
+
+        let result = histogram(parser)
+            .expect("parse failed");
+
+        assert_eq!(expected, BTreeMap::from_iter(result));
     }
 }

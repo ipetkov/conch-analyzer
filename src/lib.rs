@@ -67,5 +67,5 @@ pub fn cmd_histogram(s: &str) -> String {
     let lex = Lexer::new(s.chars());
     let parser = DefaultParser::new(lex);
 
-    build_histogram(histogram::Histogram::histogram(parser))
+    build_histogram(histogram::histogram(parser))
 }

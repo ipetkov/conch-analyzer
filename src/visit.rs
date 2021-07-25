@@ -537,7 +537,7 @@ pub fn walk_simple_command<'a, V: Visitor<'a>>(v: &mut V, cmd: &'a ast::DefaultS
     } = cmd;
 
     let is_assignment = redirects_or_cmd_words.is_empty()
-        || redirects_or_env_vars
+        && redirects_or_env_vars
             .iter()
             .all(|roev| matches!(roev, ast::RedirectOrEnvVar::EnvVar(_, _)));
 
