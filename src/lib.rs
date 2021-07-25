@@ -1,4 +1,5 @@
 mod utils;
+mod visit;
 
 use wasm_bindgen::prelude::*;
 
