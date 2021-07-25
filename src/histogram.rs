@@ -5,11 +5,17 @@ use std::collections::HashMap;
 type ParseResult<T> = conch_parser::parse::ParseResult<T, void::Void>;
 
 #[derive(Default)]
-struct Histogram {
+struct CmdRecorder {
     map: HashMap<String, usize>,
 }
 
-impl Histogram {
+/// Records the occurrances of all simple commands that are delegated to it.
+/// Note, by default it will not attempt to walk an entire AST, in fact, it
+/// will only look at the first word in a simple command and record some statistics.
+///
+/// It will expect that the caller will actually perform the appropriate traversals
+/// to find all simple commands.
+impl CmdRecorder {
     fn new() -> Self {
         Self::default()
     }
@@ -22,17 +28,21 @@ impl Histogram {
 }
 
 /// A visitor which extracts all SimpleCommands that can be found
-/// (from all places including substitutions etc.)
-struct CmdVisitor<'a> {
-    histogram: &'a mut Histogram,
+/// (from all places including substitutions etc.) and forwards them
+/// to another visitor.
+struct CmdFinder<V> {
+    delegate: V,
 }
 
-impl<'ast> Visitor<'ast> for CmdVisitor<'_> {
+impl<'ast, V> Visitor<'ast> for CmdFinder<V>
+where
+    V: Visitor<'ast>,
+{
     fn visit_simple_command(&mut self, cmd: &'ast ast::DefaultSimpleCommand) {
         // Default behavior, keep walking the tree
         visit::walk_simple_command(self, cmd);
 
-        self.histogram.visit_simple_command(cmd);
+        self.delegate.visit_simple_command(cmd);
     }
 }
 
@@ -40,17 +50,15 @@ pub(crate) fn histogram<I>(cmds: I) -> ParseResult<HashMap<String, usize>>
 where
     I: IntoIterator<Item = ParseResult<ast::TopLevelCommand<String>>>,
 {
-    let mut histogram = Histogram::new();
-
-    let mut cmd_visitor = CmdVisitor {
-        histogram: &mut histogram,
+    let mut cmd_visitor = CmdFinder {
+        delegate: CmdRecorder::new(),
     };
 
     for cmd in cmds {
         cmd_visitor.visit_top_level_command(&cmd?)
     }
 
-    Ok(histogram.map)
+    Ok(cmd_visitor.delegate.map)
 }
 
 fn simple_word_to_str(word: &ast::DefaultSimpleWord) -> Option<&str> {
@@ -71,7 +79,7 @@ fn simple_word_to_str(word: &ast::DefaultSimpleWord) -> Option<&str> {
     Some(name)
 }
 
-impl<'ast> Visitor<'ast> for Histogram {
+impl<'ast> Visitor<'ast> for CmdRecorder {
     fn visit_simple_command(&mut self, cmd: &'ast ast::DefaultSimpleCommand) {
         let name = cmd
             .redirects_or_cmd_words
@@ -140,9 +148,9 @@ impl<'ast> Visitor<'ast> for Histogram {
 
 #[cfg(test)]
 mod test {
+    use super::histogram;
     use conch_parser::lexer::Lexer;
     use conch_parser::parse::DefaultParser;
-    use super::histogram;
     use std::collections::BTreeMap;
     use std::iter::FromIterator;
 
@@ -286,8 +294,7 @@ mod test {
         expected.insert("subst13".into(), 1);
         expected.insert("redsub".into(), 6);
 
-        let result = histogram(parser)
-            .expect("parse failed");
+        let result = histogram(parser).expect("parse failed");
 
         assert_eq!(expected, BTreeMap::from_iter(result));
     }
