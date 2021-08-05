@@ -1,0 +1,29 @@
+.outer-container {
+  padding-left: 20%;
+  padding-right: 20%;
+}
+
+.app-container {
+  width: 100%;
+}
+
+.script-container {
+  float: left;
+  width: 45%;
+  padding-right 5%;
+}
+
+.results-container {
+  float: right;
+  width: 45%;
+  padding-left 5%;
+}
+
+.app-footer {
+  clear: both;
+}
+
+#script-input {
+  width: 100%;
+  height: 100%;
+}

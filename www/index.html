@@ -3,9 +3,45 @@
   <head>
     <meta charset="utf-8">
     <title>Hello wasm-pack!</title>
+    <link rel="stylesheet" href="./style.css">
   </head>
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
     <script src="./bootstrap.js"></script>
+
+    <div class="outer-container">
+      <div class="about">
+        <h3>About</h3>
+        <p>
+          This is a proof of concept project for building tools for analyzing shell
+          scripts on top of the <a href="https://github.com/ipetkov/conch-parser">conch-parser</a>
+          crate.
+        </p>
+        <p>
+          The code is written in Rust and compiled down to a web assembly module which
+          runs in the browser.
+        </p>
+        <p>
+          Try pasting the contents of any shell script in the textbox below and clicking the
+          <em>Analyze</em> button!
+        </p>
+      </div>
+
+      <div class="app-container">
+        <div class="script-container">
+          <button id="analyze">Analyze!</button>
+          <textarea id="script-input" rows="75"></textarea>
+        </div>
+
+        <div class="results-container">
+          <table>
+            <tbody id="results" />
+          </table>
+        </div>
+
+        <div class="app-footer"></div>
+      </div>
+    </div>
+
   </body>
 </html>
